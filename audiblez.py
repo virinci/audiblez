@@ -34,21 +34,17 @@ def main(kokoro, file_path, lang, voice):
     has_ffmpeg = shutil.which('ffmpeg') is not None
     if not has_ffmpeg:
         print('\033[91m' + 'ffmpeg not found. Please install ffmpeg to create mp3 and m4b audiobook files.' + '\033[0m')
-    total_chars = sum([len(t) for t in texts])
+    total_chars, processed_chars = sum(map(len, texts)), 0
     print('Started at:', time.strftime('%H:%M:%S'))
     print(f'Total characters: {total_chars:,}')
-    print('Total words:', len(' '.join(texts).split(' ')))
+    print('Total words:', len(' '.join(texts).split()))
 
-    i = 1
     chapter_mp3_files = []
-    for text in texts:
-        if len(text) == 0:
-            continue
+    for i, text in enumerate(filter(None, texts), start=1):
         chapter_filename = filename.replace('.epub', f'_chapter_{i}.wav')
         chapter_mp3_files.append(chapter_filename)
         if Path(chapter_filename).exists():
             print(f'File for chapter {i} already exists. Skipping')
-            i += 1
             continue
         print(f'Reading chapter {i} ({len(text):,} characters)...')
         if i == 1:
@@ -59,14 +55,14 @@ def main(kokoro, file_path, lang, voice):
         end_time = time.time()
         delta_seconds = end_time - start_time
         chars_per_sec = len(text) / delta_seconds
-        remaining_chars = sum([len(t) for t in texts[i - 1:]])
+        processed_chars += len(text)
+        remaining_chars = total_chars - processed_chars
         remaining_time = remaining_chars / chars_per_sec
         print(f'Estimated time remaining: {strfdelta(remaining_time)}')
         print('Chapter written to', chapter_filename)
         print(f'Chapter {i} read in {delta_seconds:.2f} seconds ({chars_per_sec:.0f} characters per second)')
-        progress = int((total_chars - remaining_chars) / total_chars * 100)
+        progress = processed_chars * 100 // total_chars
         print('Progress:', f'{progress}%')
-        i += 1
     if has_ffmpeg:
         create_m4b(chapter_mp3_files, filename)
 
@@ -124,11 +120,11 @@ def strfdelta(tdelta, fmt='{D:02}d {H:02}h {M:02}m {S:02}s'):
     return f.format(fmt, **values)
 
 
-def create_m4b(chaptfer_files, filename):
+def create_m4b(chapter_files, filename):
     tmp_filename = filename.replace('.epub', '.tmp.m4a')
     if not Path(tmp_filename).exists():
         combined_audio = AudioSegment.empty()
-        for wav_file in chaptfer_files:
+        for wav_file in chapter_files:
             audio = AudioSegment.from_wav(wav_file)
             combined_audio += audio
         print('Converting to Mp4...')
@@ -143,7 +139,7 @@ def create_m4b(chaptfer_files, filename):
 
 
 def cli_main():
-    if not Path('kokoro-v0_19.onnx').exists() or not Path('voices.json').exists():
+    if not Path('kokoro-v0_19.onnx').is_file() or not Path('voices.json').is_file():
         print('Error: kokoro-v0_19.onnx and voices.json must be in the current directory. Please download them with:')
         print('wget https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/kokoro-v0_19.onnx')
         print('wget https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices.json')
